@@ -3,12 +3,14 @@ const client = new Client();
 
 let storage = {
   low: {
-    name: 'Nobody',
-    price: 100000
+    name: 'nobody',
+    price: 100000,
+    set: false
   },
   high: {
-    name: 'Nobody',
-    price: -100000
+    name: 'nobody',
+    price: -100000,
+    set: false
   }
 };
 
@@ -35,7 +37,7 @@ client.on('message', message => {
       if (buyPrice >= price) {
         storage = {
           ...storage,
-          high: { name: message.author.username, price: buyPrice }
+          high: { name: message.author.username, price: buyPrice, set: true }
         };
         return message.channel.send(
           `${message.author.username}'s island is buying for ${buyPrice} bells per turnip`
@@ -57,7 +59,7 @@ client.on('message', message => {
       if (price >= sellPrice) {
         storage = {
           ...storage,
-          low: { name: message.author.username, price: sellPrice }
+          low: { name: message.author.username, price: sellPrice, set: true }
         };
         return message.channel.send(
           `Daisy Mae on ${message.author.username}'s island is selling turnips for ${sellPrice} bells per turnip`
@@ -70,12 +72,20 @@ client.on('message', message => {
     }
   } else if (command === 'update') {
     const { high, low } = storage;
-    message.channel.send(
-      `${high.name}'s island is paying ${high.price} bells per turnip!`
-    );
-    message.channel.send(
-      `Daisy Mae on ${low.name}'s island is selling turnips for ${low.price} bells per turnip!`
-    );
+    if (!high.set && !low.set) {
+      message.channel.send('The prices for this week have not been set');
+    } else {
+      if (high.set) {
+        message.channel.send(
+          `${high.name}'s island is paying ${high.price} bells per turnip!`
+        );
+      }
+      if (low.set) {
+        message.channel.send(
+          `Daisy Mae on ${low.name}'s island is selling turnips for ${low.price} bells per turnip!`
+        );
+      }
+    }
   } else if (command === 'help') {
     message.reply(
       'Type `!buy <number>` to tell me how much Timmy and Tommy are buying turnips for! Example: `!buy 100`'
