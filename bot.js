@@ -14,19 +14,45 @@ let storage = {
   high: initial // Timmy & Tommy buys
 };
 
-const errorMsg = 'Sorry! Something went wrong. Yell at Brian.';
+let buyers = [];
+let sellers = [];
+
+const requireInt = ['buy', 'sell'];
+const validCommands = ['buy', 'sell', 'update', 'help', 'hours'];
+const errorMsg =
+  'Invalid command. Type `!help` to see a list of valid commands.';
 
 client.on('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
+  client.user.setActivity('everything', { type: 'LISTENING' });
 });
 
 client.on('message', message => {
+  // Handle command listening
   const prefix = '!';
+
+  if (!message.content.startsWith(prefix)) return;
+
   const args = message.content
     .slice(prefix.length)
     .trim()
     .split(/ +/g);
+
   const command = args.shift().toLowerCase();
+  if (!validCommands.includes(command)) return;
+
+  let input = 0;
+  if (requireInt.includes(command)) {
+    if (args.length != 1) return message.reply(errorMsg);
+
+    input = parseInt(args[0]);
+    if (isNaN(input)) return message.reply(errorMsg);
+  } else if (args.length != 0) return message.reply(errorMsg);
+
+  // Channel
+  const channel =
+    client.channels.cache.find(c => c.name === 'stalk-market') ||
+    message.channel;
 
   // Reset prices
   let now = new Date();
@@ -43,31 +69,39 @@ client.on('message', message => {
     milliseconds: 0
   });
 
-  if (!isSameDay(storage.low.date, now)) storage.low = initial;
-  else if (
+  if (!isSameDay(storage.low.date, now)) {
+    storage.low = initial;
+    sellers = [];
+  } else if (
     isSameDay(storage.low.date, now) &&
     isAfter(now, noon) &&
     isBefore(storage.low.date, noon)
-  )
+  ) {
     storage.low = initial;
+    sellers = [];
+  }
 
-  if (!isSameDay(storage.high.date, now)) storage.high = initial;
-  else if (
+  if (!isSameDay(storage.high.date, now)) {
+    storage.high = initial;
+    buyers = [];
+  } else if (
     isSameDay(storage.high.date, now) &&
     isAfter(now, noon) &&
     isBefore(storage.high.date, noon)
-  )
+  ) {
     storage.high = initial;
+    buyers = [];
+  }
 
   if (command === 'buy') {
-    const buyPrice = parseInt(args[0]);
-    if (isNaN(buyPrice)) {
-      return message.reply(errorMsg);
-    } else if (isSunday(now)) {
+    const buyPrice = input;
+    if (isSunday(now)) {
       return message.reply(`Sorry, Timmy and Tommy don't buy on Sundays.`);
     } else if (isAfter(now, close)) {
       return message.reply(`Sorry, Timmy and Tommy close at 10PM.`);
     } else {
+      if (!buyers.includes(message.author.username))
+        buyers.push(message.author.username);
       const {
         high: { name, price }
       } = storage;
@@ -81,24 +115,24 @@ client.on('message', message => {
             set: true
           }
         };
-        return message.channel.send(
+        return channel.send(
           `New high! ${message.author.username}'s island is buying for ${buyPrice} bells per turnip.`
         );
       } else {
-        return message.channel.send(
+        return message.reply(
           `Sorry, ${name}'s island is buying higher at ${price} bells per turnip.`
         );
       }
     }
   } else if (command === 'sell') {
-    const sellPrice = parseInt(args[0]);
-    if (isNaN(sellPrice)) {
-      return message.reply(errorMsg);
-    } else if (!isSunday(now)) {
+    const sellPrice = input;
+    if (!isSunday(now)) {
       return message.reply(`Sorry, Daisy Mae only sells on Sundays.`);
     } else if (isAfter(now, noon)) {
       return message.reply(`Sorry, Daisy Mae left at 12PM.`);
     } else {
+      if (!sellers.includes(message.author.username))
+        sellers.push(message.author.username);
       const {
         low: { name, price }
       } = storage;
@@ -112,11 +146,11 @@ client.on('message', message => {
             set: true
           }
         };
-        return message.channel.send(
+        return channel.send(
           `Better price available! Daisy Mae on ${message.author.username}'s island is selling turnips for ${sellPrice} bells per turnip.`
         );
       } else {
-        return message.channel.send(
+        return message.reply(
           `Sorry, better price at ${name}'s island, Daisy Mae is selling turnips for ${price} bells per turnip.`
         );
       }
@@ -128,25 +162,34 @@ client.on('message', message => {
     } else {
       if (high.set) {
         message.channel.send(
+          `These people have submitted prices: ${buyers.join(', ')}`
+        );
+        message.channel.send(
           `${high.name}'s island is buying turnips for ${high.price} bells per turnip!`
         );
       }
       if (low.set) {
         message.channel.send(
+          `These people have submitted prices: ${sellers.join(', ')}`
+        );
+        cmessage.channel.send(
           `Daisy Mae on ${low.name}'s island is selling turnips for ${low.price} bells per turnip!`
         );
       }
     }
   } else if (command === 'help') {
-    message.reply(
-      'Type `!buy <number>` to tell me how much Timmy and Tommy are buying turnips for! Example: `!buy 100`'
-    );
-    message.reply(
-      'Type `!sell <number>` to tell me how much Daisy Mae is selling turnips for! Example: `!sell 100`'
-    );
-    message.reply(
-      'Type `!update` if you want to know who has the current best prices to buy and sell turnips!'
-    );
+    let content =
+      'Type `!buy <number>` to tell me how much Timmy and Tommy are buying turnips for! Example: `!buy 100`\n' +
+      'Type `!sell <number>` to tell me how much Daisy Mae is selling turnips for! Example: `!sell 100`\n' +
+      'Type `!update` if you want to know who has the current best prices to buy and sell turnips!\n' +
+      'Type `!hours` if you want to know what the hours to are to buy and sell turnips!';
+    message.reply(content);
+  } else if (command === 'hours') {
+    let content =
+      `Current server time: ${now}\n` +
+      `Daisy Mae hours: Sunday 5AM-12PM\n` +
+      `Timmy & Tommy hours: Monday-Saturday, 5AM-12PM/ 12PM-10PM`;
+    message.reply(content);
   }
 });
 
