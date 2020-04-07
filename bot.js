@@ -1,26 +1,35 @@
 const { isSameDay, isSunday, set, isAfter, isBefore } = require('date-fns');
 const { Client } = require('discord.js');
+const _ = require('lodash');
 const client = new Client();
 
 const initial = {
   name: 'nobody',
-  price: 0,
+  price: undefined,
   date: new Date(2019, 1, 1),
   set: false
 };
 
-let storage = {
-  low: initial, // Daisy Mae sells
-  high: initial // Timmy & Tommy buys
-};
+let bestPrice = initial;
 
-let buyers = [];
-let sellers = [];
+let contributors = {};
 
 const requireInt = ['buy', 'sell'];
 const validCommands = ['buy', 'sell', 'update', 'help', 'hours'];
 const errorMsg =
   'Invalid command. Type `!help` to see a list of valid commands.';
+
+const updateContributors = (username, date, price) => {
+  contributors[username] = {
+    date,
+    price
+  };
+};
+
+const reset = () => {
+  contributors = {};
+  bestPrice = initial;
+};
 
 client.on('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
@@ -69,111 +78,129 @@ client.on('message', message => {
     milliseconds: 0
   });
 
-  if (!isSameDay(storage.low.date, now)) {
-    storage.low = initial;
-    sellers = [];
+  if (!isSameDay(bestPrice.date, now)) {
+    reset();
   } else if (
-    isSameDay(storage.low.date, now) &&
+    isSameDay(bestPrice.date, now) &&
     isAfter(now, noon) &&
-    isBefore(storage.low.date, noon)
+    isBefore(bestPrice.date, noon)
   ) {
-    storage.low = initial;
-    sellers = [];
-  }
-
-  if (!isSameDay(storage.high.date, now)) {
-    storage.high = initial;
-    buyers = [];
-  } else if (
-    isSameDay(storage.high.date, now) &&
-    isAfter(now, noon) &&
-    isBefore(storage.high.date, noon)
-  ) {
-    storage.high = initial;
-    buyers = [];
+    reset();
   }
 
   if (command === 'buy') {
-    const buyPrice = input;
+    const inputPrice = input;
     if (isSunday(now)) {
       return message.reply(`Sorry, Timmy and Tommy don't buy on Sundays.`);
     } else if (isAfter(now, close)) {
       return message.reply(`Sorry, Timmy and Tommy close at 10PM.`);
     } else {
-      if (!buyers.includes(message.author.username))
-        buyers.push(message.author.username);
-      const {
-        high: { name, price }
-      } = storage;
-      if (buyPrice >= price) {
-        storage = {
-          ...storage,
-          high: {
-            name: message.author.username,
-            price: buyPrice,
-            date: now,
-            set: true
-          }
+      updateContributors(message.author.username, now, inputPrice);
+      if (inputPrice === bestPrice.price) {
+        return message.reply(
+          `${bestPrice.name}'s island is also buying for ${inputPrice} bells per turnip.`
+        );
+      } else if (
+        inputPrice > bestPrice.price ||
+        bestPrice.price === undefined
+      ) {
+        bestPrice = {
+          name: message.author.username,
+          price: inputPrice,
+          date: now,
+          set: true,
+          type: 'buy'
         };
         return channel.send(
-          `New high! ${message.author.username}'s island is buying for ${buyPrice} bells per turnip.`
+          `**New high!**\n${message.author.username}'s island is buying for ${inputPrice} bells per turnip.`
+        );
+      } else if (bestPrice.name === message.author.username) {
+        let bestUser = _.maxBy(
+          _.keys(contributors),
+          o => contributors[o].price
+        );
+        let { price, date } = contributors[bestUser];
+        bestPrice = {
+          name: bestUser,
+          price,
+          date,
+          set: true,
+          type: 'buy'
+        };
+        return channel.send(
+          `**${message.author.username} made a correction.**\nCurrent high is now ${bestUser}'s island buying for ${price} bells per turnip.`
         );
       } else {
         return message.reply(
-          `Sorry, ${name}'s island is buying higher at ${price} bells per turnip.`
+          `Sorry, ${bestPrice.name}'s island is buying higher at ${bestPrice.price} bells per turnip.`
         );
       }
     }
   } else if (command === 'sell') {
-    const sellPrice = input;
+    const inputPrice = input;
     if (!isSunday(now)) {
       return message.reply(`Sorry, Daisy Mae only sells on Sundays.`);
     } else if (isAfter(now, noon)) {
       return message.reply(`Sorry, Daisy Mae left at 12PM.`);
     } else {
-      if (!sellers.includes(message.author.username))
-        sellers.push(message.author.username);
-      const {
-        low: { name, price }
-      } = storage;
-      if (price >= sellPrice) {
-        storage = {
-          ...storage,
-          low: {
-            name: message.author.username,
-            price: sellPrice,
-            date: now,
-            set: true
-          }
+      updateContributors(message.author.username, now, inputPrice);
+      if (inputPrice === bestPrice.price) {
+        return message.reply(
+          `Daisy Mae on ${bestPrice.name}'s island is also selling for ${inputPrice} bells per turnip.`
+        );
+      } else if (
+        inputPrice < bestPrice.price ||
+        bestPrice.price === undefined
+      ) {
+        bestPrice = {
+          name: message.author.username,
+          price: inputPrice,
+          date: now,
+          set: true,
+          type: 'sell'
         };
         return channel.send(
-          `Better price available! Daisy Mae on ${message.author.username}'s island is selling turnips for ${sellPrice} bells per turnip.`
+          `**Better price available!**\nDaisy Mae on ${message.author.username}'s island is selling turnips for ${inputPrice} bells per turnip.`
+        );
+      } else if (bestPrice.name === message.author.username) {
+        let bestUser = _.minBy(
+          _.keys(contributors),
+          o => contributors[o].price
+        );
+        let { price, date } = contributors[bestUser];
+        bestPrice = {
+          name: bestUser,
+          price,
+          date,
+          set: true,
+          type: 'sell'
+        };
+        return channel.send(
+          `**${message.author.username} made a correction.**\nBest price available from Daisy Mae on ${bestUser}'s island selling for ${bestPrice.price} bells per turnip.`
         );
       } else {
         return message.reply(
-          `Sorry, better price at ${name}'s island, Daisy Mae is selling turnips for ${price} bells per turnip.`
+          `Sorry, better price at ${bestPrice.name}'s island, Daisy Mae is selling turnips for ${bestPrice.price} bells per turnip.`
         );
       }
     }
   } else if (command === 'update') {
-    const { high, low } = storage;
-    if (!high.set && !low.set) {
+    if (!bestPrice.set) {
       message.channel.send(`The prices for today have not been set.`);
     } else {
-      if (high.set) {
+      message.channel.send(
+        `These people have submitted prices: ${Object.keys(contributors).join(
+          ', '
+        )}`
+      );
+      if (bestPrice.type === 'buy') {
         message.channel.send(
-          `These people have submitted prices: ${buyers.join(', ')}`
-        );
-        message.channel.send(
-          `${high.name}'s island is buying turnips for ${high.price} bells per turnip!`
+          `${bestPrice.name}'s island is buying turnips for ${bestPrice.price} bells per turnip!`
         );
       }
-      if (low.set) {
+      if (bestPrice.type === 'sell') {
         message.channel.send(
-          `These people have submitted prices: ${sellers.join(', ')}`
-        );
-        cmessage.channel.send(
-          `Daisy Mae on ${low.name}'s island is selling turnips for ${low.price} bells per turnip!`
+          `Daisy Mae on ${bestPrice.name}'s island is selling turnips for ${bestPrice.price} bells per turnip!`
         );
       }
     }
